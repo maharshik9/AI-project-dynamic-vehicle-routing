@@ -7,7 +7,7 @@ import os
 import time
 import requests
 import numpy as np
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from functools import lru_cache
 
 
@@ -250,18 +250,67 @@ class TrafficAPI:
             return "🟢 Real Traffic (ORS + OSRM)", "real"
         return "🟢 Real Roads (OSRM - Free)", "real"
     
-    def get_mapbox_route(self, waypoints_latlon: List[Tuple[float, float]]) -> List[List[float]]:
-        """Alias for compatibility"""
-        return self.get_route_geometry(waypoints_latlon)
-    
-    def inject_traffic_shock(self, level: str):
-        """Placeholder for compatibility"""
-        pass
-    
-    def clear_traffic_shock(self):
-        """Placeholder for compatibility"""
-        pass
-    
+    def get_routes(self, origin_latlon: Tuple[float, float], dest_latlon: Tuple[float, float], alternatives: bool = False) -> List[Dict]:
+        """
+        Get route alternatives using OSRM.
+        
+        Args:
+            origin_latlon: (lat, lon)
+            dest_latlon: (lat, lon)
+            alternatives: If True, request alternative routes
+            
+        Returns:
+            List of dicts: [{'geometry': [[lat,lon]...], 'duration': seconds, 'distance': meters, 'nodes': []}]
+        """
+        # OSRM (lon, lat)
+        coord_str = f"{origin_latlon[1]},{origin_latlon[0]};{dest_latlon[1]},{dest_latlon[0]}"
+        url = f"{self.OSRM_BASE}/{coord_str}"
+        
+        params = {
+            "overview": "full",       # Get complete geometry
+            "geometries": "geojson",  # GeoJSON format
+            "steps": "false",
+            "alternatives": "true" if alternatives else "false"
+        }
+        
+        routes_data = []
+        
+        try:
+            response = requests.get(url, params=params, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("code") == "Ok" and data.get("routes"):
+                    for r in data["routes"]:
+                        # Extract geometry [lon, lat] -> [lat, lon]
+                        coords = r["geometry"]["coordinates"]
+                        geometry = [[c[1], c[0]] for c in coords]
+                        
+                        routes_data.append({
+                            'geometry': geometry,
+                            'duration': r['duration'],
+                            'distance': r['distance'],
+                            'nodes': [0, 1] # Placeholder for graph nodes if we had a graph
+                        })
+        except Exception as e:
+            print(f"OSRM Error: {e}")
+            
+        # Fallback if no routes found
+        if not routes_data:
+            # Straight line fallback
+            geometry = [list(origin_latlon), list(dest_latlon)]
+            dist_km = 111 * np.linalg.norm(np.array(origin_latlon) - np.array(dest_latlon))
+            duration_sec = (dist_km / 30.0) * 3600
+            
+            routes_data.append({
+                'geometry': geometry,
+                'duration': duration_sec,
+                'distance': dist_km * 1000,
+                'nodes': [0, 1],
+                'type': 'fallback'
+            })
+            
+        return routes_data
+
     def get_traffic_variance(self) -> float:
         """Placeholder for compatibility"""
         return 0.0
