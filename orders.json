@@ -1,0 +1,24 @@
+{
+  "orders": [
+    {
+      "order_no": "ORD001",
+      "address": "MG Road, Bangalore, India"
+    },
+    {
+      "order_no": "ORD002",
+      "address": "Koramangala, Bangalore, India"
+    },
+    {
+      "order_no": "ORD003",
+      "address": "Indiranagar, Bangalore, India"
+    },
+    {
+      "order_no": "ORD004",
+      "address": "Whitefield, Bangalore, India"
+    },
+    {
+      "order_no": "ORD005",
+      "address": "Jayanagar, Bangalore, India"
+    }
+  ]
+}

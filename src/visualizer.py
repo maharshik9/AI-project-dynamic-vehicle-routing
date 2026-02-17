@@ -29,11 +29,15 @@ class Visualizer:
                    visited_path: List[List[float]], 
                    alternatives: Optional[List[List[List[float]]]] = None,
                    primary_duration: float = 0,
-                   alternatives_meta: Optional[List[dict]] = None) -> pdk.Deck:
+                   alternatives_meta: Optional[List[dict]] = None,
+                   stops: Optional[List[List[float]]] = None,
+                   stop_names: Optional[List[str]] = None) -> pdk.Deck:
         """
         Construct the PyDeck object with all layers.
         primary_duration: duration in seconds for the primary route
         alternatives_meta: list of {'duration': seconds, 'distance': meters} for each alternative
+        stops: list of [lat, lon] to display as markers
+        stop_names: list of names/order numbers corresponding to stops
         """
         layers = []
         route_labels = []  # Collect labels for all routes
@@ -47,13 +51,13 @@ class Visualizer:
                 
                 layers.append(pdk.Layer(
                     "PathLayer",
-                    [{"path": self._swap_coords(alt_route), "color": color}],
+                    [{"path": self._swap_coords(alt_route), "color": color, "tooltip": "Alternative Route"}],
                     get_path="path",
                     get_color="color",
                     width_scale=1,
                     width_min_pixels=1,
                     get_width=width,
-                    pickable=False
+                    pickable=True
                 ))
                 
                 # Add duration label at midpoint of alternative route
@@ -82,7 +86,7 @@ class Visualizer:
         if visited_path:
             layers.append(pdk.Layer(
                 "PathLayer",
-                [{"path": self._swap_coords(visited_path), "color": self.COLOR_VISITED}],
+                [{"path": self._swap_coords(visited_path), "color": self.COLOR_VISITED, "tooltip": "Visited Path"}],
                 get_path="path",
                 get_color="color",
                 width_scale=1,
@@ -96,11 +100,24 @@ class Visualizer:
             is_fallback = len(current_route) <= 2
             
             route_color = [255, 0, 0, 200] if is_fallback else self.COLOR_PRIMARY_ROUTE
-            route_width = 4 if is_fallback else 12
+            route_width = 4 if is_fallback else 15
             
+            # Glow Effect (Wider, transparent layer below)
+            if not is_fallback:
+                layers.append(pdk.Layer(
+                    "PathLayer",
+                    [{"path": self._swap_coords(current_route), "color": self.COLOR_PRIMARY_ROUTE[:3] + [50]}], # Low opacity
+                    get_path="path",
+                    get_color="color",
+                    width_scale=1,
+                    width_min_pixels=4,
+                    get_width=30, # Double width for glow
+                    pickable=False,
+                ))
+
             layers.append(pdk.Layer(
                 "PathLayer",
-                [{"path": self._swap_coords(current_route), "color": route_color}],
+                [{"path": self._swap_coords(current_route), "color": route_color, "tooltip": "Active Route"}],
                 get_path="path",
                 get_color="color",
                 width_scale=1,
@@ -117,7 +134,7 @@ class Visualizer:
                 pri_min = primary_duration / 60
                 route_labels.append({
                     "pos": [mid_pt[1], mid_pt[0]],
-                    "text": f"{pri_min:.0f} min ✓ Optimal",
+                    "text": f"{pri_min:.0f} min",
                     "col": self.COLOR_PRIMARY_ROUTE[:3]
                 })
             
@@ -125,8 +142,8 @@ class Visualizer:
             start = current_route[0]
             end = current_route[-1]
             text_data = [
-                {"pos": [start[1], start[0]], "text": "Origin", "col": [0, 255, 0]},
-                {"pos": [end[1], end[0]], "text": "Dest", "col": [255, 200, 50]}
+                {"pos": [start[1], start[0]], "text": "Start", "col": [0, 255, 0]},
+                {"pos": [end[1], end[0]], "text": "End", "col": [255, 200, 50]}
             ]
             
             layers.append(pdk.Layer(
@@ -156,7 +173,7 @@ class Visualizer:
 
         # 4. Vehicle Layer (Top)
         if vehicle_loc:
-            vehicle_data = [{"pos": [vehicle_loc[1], vehicle_loc[0]]}]
+            vehicle_data = [{"pos": [vehicle_loc[1], vehicle_loc[0]], "tooltip": f"Vehicle Location\nLat: {vehicle_loc[0]}\nLon: {vehicle_loc[1]}"}]
             
             # Pulsing effect or just a distinct marker
             layers.append(pdk.Layer(
@@ -174,11 +191,76 @@ class Visualizer:
                 pickable=True
             ))
 
-        # View State
+        # 6. Stops Layer (For uploaded orders)
+        if stops:
+            formatted_stops = []
+            stop_labels = []
+            
+            for i, s in enumerate(stops):
+                name = stop_names[i] if stop_names and i < len(stop_names) else f"Stop {i+1}"
+                formatted_stops.append({
+                    "pos": [s[1], s[0]], 
+                    "name": name,
+                    "lat": s[0],
+                    "lon": s[1],
+                    "tooltip": f"{name}\nLat: {s[0]:.4f}\nLon: {s[1]:.4f}"
+                })
+                # Add number label
+                stop_labels.append({
+                    "pos": [s[1], s[0]],
+                    "text": str(i + 1),
+                    "col": [255, 255, 255]
+                })
+
+            layers.append(pdk.Layer(
+                "ScatterplotLayer",
+                formatted_stops,
+                get_position="pos",
+                get_fill_color=[0, 173, 181], # Teal color
+                get_line_color=[0, 0, 0],
+                get_radius=60,
+                radius_min_pixels=8,
+                radius_max_pixels=20,
+                filled=True,
+                stroked=True,
+                line_width_min_pixels=1,
+                pickable=True
+            ))
+            
+            # Numbered Labels
+            layers.append(pdk.Layer(
+                "TextLayer",
+                stop_labels,
+                get_position="pos",
+                get_text="text",
+                get_color="col",
+                get_size=12,
+                get_alignment_baseline="'center'",
+                get_text_anchor="'middle'",
+                font_weight="'bold'"
+            ))
+
+        # View State Logic
+        lat, lon = 12.9716, 77.5946 # Default Bangalore
+        zoom = 11
+
+        if vehicle_loc:
+            lat, lon = vehicle_loc[0], vehicle_loc[1]
+            zoom = 14
+        elif stops:
+            # Center at first stop as requested
+            if len(stops) > 0:
+                lat = stops[0][0]
+                lon = stops[0][1]
+                zoom = 12
+        elif current_route:
+             # If no vehicle but has route (shouldn't happen often), center on start
+             lat, lon = current_route[0][0], current_route[0][1]
+
         view_state = pdk.ViewState(
-            latitude=vehicle_loc[0] if vehicle_loc else 12.9716,
-            longitude=vehicle_loc[1] if vehicle_loc else 77.5946,
-            zoom=14,
+            latitude=lat,
+            longitude=lon,
+            zoom=zoom,
             pitch=50,
             bearing=0
         )
@@ -187,5 +269,5 @@ class Visualizer:
             layers=layers,
             initial_view_state=view_state,
             map_style=self.map_style,
-            tooltip={"text": "Route Segment"}
+            tooltip={"text": "{tooltip}"}
         )
