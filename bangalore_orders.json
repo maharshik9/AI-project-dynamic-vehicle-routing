@@ -1,0 +1,24 @@
+{
+    "orders": [
+        {
+            "order_no": "BLR001",
+            "address": "MG Road, Bangalore, India"
+        },
+        {
+            "order_no": "BLR002",
+            "address": "Koramangala 5th Block, Bangalore, India"
+        },
+        {
+            "order_no": "BLR003",
+            "address": "Indiranagar 100 Feet Road, Bangalore, India"
+        },
+        {
+            "order_no": "BLR004",
+            "address": "Whitefield Main Road, Bangalore, India"
+        },
+        {
+            "order_no": "BLR005",
+            "address": "Jayanagar 4th Block, Bangalore, India"
+        }
+    ]
+}
